@@ -14,6 +14,7 @@ Trace logging in viml
 # Function Reference:
 
 ##  function logger#init(level, targets [, format [, filter]])
+```vim
   @param level [String]
     Log level.  One of 'ALL|TRACE|DEBUG|INFO|WARN|ERROR|FATAL|NONE'.
   @param targets [mixed]
@@ -57,7 +58,9 @@ Trace logging in viml
         return index(self.filter, a:name) != -1
       endfunction
   @return void
-
+```
 ##  function logger#getLogger(name)
+```vim
   @param name [String] Log name
   @return Logger object
+```
