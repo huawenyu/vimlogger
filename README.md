@@ -2,14 +2,43 @@
 Trace logging in viml
 
 # Usage:
+```vim
   " in .vimrc
-  call logger#init('ALL', ['/dev/stdout', '~/.vim/log.txt'])
+  call logger#init('ALL', ['/dev/stdout', '/tmp/vim.log'])
 
   " in script
   silent! let s:log = logger#getLogger(expand('<sfile>:t'))
 
   " start logger
   silent! call s:log.info('aaa')
+
+
+  $ tail -f /tmp/vim.log
+
+  [TRACE][20:42:46][gdb.vim] gdb: {
+      'ServerInit': function('confos#InitSvr'),
+      'Symbol': function('confos#Symbol'),
+      '_autorun': 0,
+      '_current_buf': -1,
+      '_current_line': -1,
+      '_gdb_break_qf': /tmp/gdb.break,
+      '_gdb_bt_qf': /tmp/gdb.bt,
+      '_has_breakpoints': 0,
+      '_initialized': 0,
+      '_jump_window': 1,
+      '_reconnect': 0,
+      '_server_addr': [10.1.1.125, 444],
+      '_server_exited': 0
+  }
+  [INFO][20:42:46][state.vim] Open gdb#SchemeCreate
+  [INFO][20:42:49][state.vim] matched: [, call, on_init]
+  [INFO][20:42:49][gdb.vim] Load breaks ...
+  [INFO][20:42:49][gdb.vim] Load set breaks ...
+  [INFO][20:42:49][gdb.vim] Gdbserver call Init()=function('confos#InitSvr')
+  [INFO][20:42:49][state.vim] matched: [, call, on_init]
+
+```
+
 
 # Function Reference:
 
