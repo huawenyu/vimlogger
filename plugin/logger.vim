@@ -17,5 +17,3 @@ let g:loaded_vimlogger = 1
 "}
 
 
-"autocmd
-command! -nargs=0 Logger call utils#Tracecrash()
