@@ -3,41 +3,21 @@
 " Maintainer: Yukihiro Nakadaira <yukihiro.nakadaira@gmail.com>
 " License: This file is placed in the public domain.
 "
-" Installation:
-"   Put this file in autoload directory in your 'runtimepath'.
-"
 " Usage:
 "   " in .vimrc
-"   call log#init('ALL', ['/dev/stdout', '~/.vim/log.txt'])
+"   call logger#init('ALL', ['/dev/stdout', '~/.vim/log.txt'])
 "
 "   " in script
-"   let s:log = log#getLogger(expand('<sfile>:t'))
+"   silent! let s:log = logger#getLogger(expand('<sfile>:t'))
 "
-"   function s:func()
-"     call s:log.trace('start of func()')
-"     if s:log.isDebugEnabled()
-"       call s:log.debug('debug information')
-"     endif
-"     call s:log.trace('end of func()')
-"   endfunction
-"
-"   " If you want to distribute your script without log.vim, use :silent! or
-"   " exists().
-"   silent! let s:log = log#getLogger(expand('<sfile>:t'))
-"   function s:func()
-"     silent! call s:log.info('aaa')
-"     if exists('s:log')
-"       call s:log.info('bbb')
-"     endif
-"   endfunction
+"   " start logger
+"   silent! call s:log.info('aaa')
 "
 " Reference:
 "
-"   function log#init(level, targets [, format [, filter]])
+"   function logger#init(level, targets [, format [, filter]])
 "   @param level [String]
 "     Log level.  One of 'ALL|TRACE|DEBUG|INFO|WARN|ERROR|FATAL|NONE'.
-"     For example, when level is 'WARN', output of log.warn(), log.error() and
-"     log.fatal() will appear in log.
 "   @param targets [mixed]
 "     Output target.  Filename or Function or Dictionary or List of these
 "     values.
@@ -58,13 +38,13 @@
 "     Log format.  {expr} is replaced by eval(expr).  For example, {getpid()}
 "     is useful to detect session.  Following special variables are available.
 "     {level}   log level like DEBUG, INFO, etc...
-"     {name}    log name specified by log#getLogger(name)
+"     {name}    log name specified by logger#getLogger(name)
 "     {msg}     log message
 "     If this is 0, '', [] or {} (empty(format) is true), default is used.
 "     default:  [{level}][{strftime("%Y-%m-%d %H:%M:%S")}][{name}] {msg}
 "   @param filter [mixed]
 "     Pattern (String) or Function or Dictionary to filter log session.
-"     Filter is applied to name that specified by log#getLogger(name).  If
+"     Filter is applied to name that specified by logger#getLogger(name).  If
 "     result is false, logging session do not output any text.
 "     Pattern (String):
 "       name =~ Pattern
@@ -80,21 +60,198 @@
 "       endfunction
 "   @return void
 "
-"   function log#getLogger(name)
+"   function logger#getLogger(name)
 "   @param name [String] Log name
 "   @return Logger object
 
-function log#import()
+function logger#import()
     return s:lib
 endfunction
 
-function log#init(...)
+function logger#init(...)
     call call(s:lib.init, a:000, s:lib)
 endfunction
 
-function log#getLogger(name)
+function logger#getLogger(name)
     return s:lib.Logger.new(a:name)
 endfunction
+
+
+
+" options. {{{1
+if !exists('g:prettyprint_indent')  " {{{2
+    let g:prettyprint_indent = 4
+    "if exists('*shiftwidth')
+    "    let g:prettyprint_indent = 'shiftwidth()'
+    "else
+    "    let g:prettyprint_indent = '&l:shiftwidth'
+    "endif
+endif
+
+if !exists('g:prettyprint_width')  " {{{2
+    let g:prettyprint_width = '&columns'
+endif
+
+if !exists('g:prettyprint_string')  " {{{2
+    let g:prettyprint_string = []
+endif
+
+if !exists('g:prettyprint_show_expression')  " {{{2
+    let g:prettyprint_show_expression = 0
+endif
+
+let s:string_t = type('')
+let s:list_t = type([])
+let s:dict_t = type({})
+let s:func_t = type(function('tr'))
+
+" functions. {{{1
+function! s:pp(expr, shift, width, stack) abort
+    let indent = repeat(s:blank, a:shift)
+    let indentn = indent . s:blank
+
+    let appear = index(a:stack, a:expr)
+    call add(a:stack, a:expr)
+
+    let width = s:width - a:width - s:indent * a:shift
+
+    let str = ''
+    if type(a:expr) == s:list_t
+        if appear < 0
+            let result = []
+            for Expr in a:expr
+                call add(result, s:pp(Expr, a:shift + 1, 0, a:stack))
+                unlet Expr
+            endfor
+            let oneline = '[' . join(result, ', ') . ']'
+            if strlen(oneline) < width && oneline !~ "\n"
+                let str = oneline
+            else
+                let content = join(map(result, 'indentn . v:val'), ",\n")
+                let str = printf("[\n%s\n%s]", content, indent)
+            endif
+        else
+            let str = '[nested element ' . appear .']'
+        endif
+
+    elseif type(a:expr) == s:dict_t
+        if appear < 0
+            let result = []
+            for key in sort(keys(a:expr))
+                let skey = string(strtrans(key))
+                let sep = ': '
+                let Val = get(a:expr, key)  " Do not use a:expr[key] to avoid Partial
+                let valstr = s:pp(Val, a:shift + 1, strlen(skey . sep), a:stack)
+                if s:indent < strlen(skey . sep) &&
+                            \ width - s:indent < strlen(skey . sep . valstr) && valstr !~ "\n"
+                    let sep = ":\n" . indentn . s:blank
+                endif
+                call add(result, skey . sep . valstr)
+                unlet Val
+            endfor
+            let oneline = '{' . join(result, ', ') . '}'
+            if strlen(oneline) < width && oneline !~ "\n"
+                let str = oneline
+            else
+                let content = join(map(result, 'indentn . v:val'), ",\n")
+                let str = printf("{\n%s\n%s}", content, indent)
+            endif
+        else
+            let str = '{nested element ' . appear .'}'
+        endif
+
+    elseif type(a:expr) == s:func_t
+        silent! let funcstr = string(a:expr)
+        let matched = matchlist(funcstr, '\C^function(''\(.\{-}\)''\()\?\)')
+        let funcname = matched[1]
+        let is_partial = matched[2] !=# ')'
+        let symbol = funcname =~# '^\%(<lambda>\)\?\d\+$' ?
+                    \                         '{"' . funcname . '"}' : funcname
+        if &verbose && exists('*' . symbol)
+            redir => func
+            " Don't print a definition location if &verbose == 1.
+            silent! execute (&verbose - 1) 'verbose function' symbol
+            redir END
+            let str = func
+        elseif is_partial
+            let str = printf("function('%s', {partial})", funcname)
+        else
+            let str = printf("function('%s')", funcname)
+        endif
+    elseif type(a:expr) == s:string_t
+        let str = a:expr
+        if a:expr =~# "\n" && s:string_split
+            let expr = s:string_raw ? 'string(v:val)' : 'string(strtrans(v:val))'
+            let str = "join([\n" . indentn .
+                        \ join(map(split(a:expr, '\n', 1), expr), ",\n" . indentn) .
+                        \ "\n" . indent . '], "\n")'
+        elseif s:string_raw
+            "let str = string(a:expr)
+            let str = a:expr
+        else
+            "let str = string(strtrans(a:expr))
+            let str = strtrans(a:expr)
+        endif
+    else
+        let str = string(a:expr)
+    endif
+
+    unlet a:stack[-1]
+    return str
+endfunction
+
+function! s:option(name) abort
+    let name = 'prettyprint_' . a:name
+    let opt = has_key(b:, name) ? b:[name] : g:[name]
+    return type(opt) == type('') ? eval(opt) : opt
+endfunction
+
+function! logger#echo(str, msg, expr) abort
+    let str = a:str
+    if g:prettyprint_show_expression
+        let str = a:expr . ' = ' . str
+    endif
+    if a:msg
+        for s in split(str, "\n")
+            echomsg s
+        endfor
+    else
+        echo str
+    endif
+endfunction
+
+function! logger#_prettyprint(exprs) abort
+    let s:indent = s:option('indent')
+    let s:blank = repeat(' ', s:indent)
+    let s:width = s:option('width') - 1
+    let string = s:option('string')
+    let strlist = type(string) is type([]) ? string : [string]
+    let s:string_split = 0 <= index(strlist, 'split')
+    let s:string_raw = 0 <= index(strlist, 'raw')
+    let result = []
+    for Expr in a:exprs
+        call add(result, s:pp(Expr, 0, 0, []))
+        unlet Expr
+    endfor
+    return join(result, '')
+endfunction
+
+function! logger#prettyprint(...) abort
+    let s:indent = s:option('indent')
+    let s:blank = repeat(' ', s:indent)
+    let s:width = s:option('width') - 1
+    let string = s:option('string')
+    let strlist = type(string) is type([]) ? string : [string]
+    let s:string_split = 0 <= index(strlist, 'split')
+    let s:string_raw = 0 <= index(strlist, 'raw')
+    let result = []
+    for Expr in a:000
+        call add(result, s:pp(Expr, 0, 0, []))
+        unlet Expr
+    endfor
+    return join(result, "\n")
+endfunction
+
 
 let s:lib = {}
 
@@ -118,7 +275,8 @@ function s:lib.init(level, targets, ...)
     let format = get(a:000, 0, '')
     let tmp.filter = get(a:000, 1, '')
     if empty(format)
-        let format = '[{level}][{strftime("%Y-%m-%d %H:%M:%S")}][{name}] {msg}'
+        "let format = '[{level}][{strftime("%Y-%m-%d %H:%M:%S")}][{name}] {msg}'
+        let format = '[{level}][{strftime("%H:%M:%S")}][{name}] {msg}'
     endif
     if empty(tmp.filter)
         let tmp.filter = ''
@@ -133,11 +291,11 @@ function s:lib.init(level, targets, ...)
             call add(self.config.targets, self.FuncAppender.new(tmp.target))
         elseif type(tmp.target) == type({})
             if !self.is_callable(tmp.target)
-                throw "log#init(): target object must have __call__(str) method"
+                throw "logger#init(): target object must have __call__(str) method"
             endif
             call add(self.config.targets, tmp.target)
         else
-            throw "log#init(): not supported target object"
+            throw "logger#init(): not supported target object"
         endif
         unlet tmp.target   " for E706
     endfor
@@ -147,11 +305,11 @@ function s:lib.init(level, targets, ...)
         let self.config.filter = self.FuncFilter.new(tmp.filter)
     elseif type(tmp.filter) == type({})
         if !self.is_callable(tmp.filter)
-            throw "log#init(): filter object must have __call__(name) method"
+            throw "logger#init(): filter object must have __call__(name) method"
         endif
         let self.config.filter = tmp.filter
     else
-        throw "log#init(): not supported filter object"
+        throw "logger#init(): not supported filter object"
     endif
 endfunction
 
@@ -179,7 +337,10 @@ endfunction
 function s:lib.Logger.log(level, args)
     let level = a:level
     let name = self.name
-    let msg = (len(a:args) == 1) ? a:args[0] : call('printf', a:args)
+
+    "let msg = (len(a:args) == 1) ? a:args[0] : call('printf', a:args)
+    let msg = logger#_prettyprint(a:args)
+
     " sub-replace-\= does not work recursively.
     "let str = substitute(s:lib.config.format, '{\([^}]\+\)}', '\=eval(submatch(1))', 'g')
     let str = ''
