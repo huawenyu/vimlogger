@@ -216,7 +216,7 @@ function s:lib.init(level, targets, ...)
     let tmp.filter = get(a:000, 1, '')
     if empty(format)
         "let format = '[{level}][{strftime("%Y-%m-%d %H:%M:%S")}][{name}] {msg}'
-        let format = '[{level}][{strftime("%H:%M:%S")}][{name}] {msg}'
+        let format = '[{strftime("%H:%M:%S")}][{level}][{name}] {msg}'
     endif
     if empty(tmp.filter)
         let tmp.filter = ''
